@@ -808,3 +808,92 @@ body {
     50%  { transform: scale(1.2); }
     100% { transform: scale(1); }
 }
+
+/* ==========================================================================
+   MODE SOMBRE (Dark Mode)
+   ========================================================================== */
+/* Transitions douces pour le changement de thème */
+body, .app-container, .task-item, .task-input, .date-input, .search-input, .modal-content {
+    transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+body.dark-mode {
+    --color-bg-body: #0f172a;        /* Fond de page très sombre */
+    --color-bg-surface: #1e293b;     /* Fond de l'application (cartes) */
+    --color-text-main: #f1f5f9;      /* Texte blanc/gris */
+    --color-text-muted: #94a3b8;     /* Texte secondaire */
+    --color-border: #334155;         /* Bordures sombres */
+    
+    --color-primary-light: #3730a3;
+    
+    /* On adapte les fonds des badges pour qu'ils soient lisibles */
+    --priority-normale-bg: rgba(59, 130, 246, 0.2);
+    --priority-faible-bg: rgba(16, 185, 129, 0.2);
+    --priority-urgent-bg: rgba(239, 68, 68, 0.2);
+    
+    /* Assombrir les ombres */
+    --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.5);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.5);
+    --shadow-xl: 0 25px 50px -12px rgba(0,0,0,0.7);
+}
+
+/* Bouton Thème */
+.theme-toggle { color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; padding: 8px; }
+.theme-toggle:hover { background: rgba(255,255,255,0.2); transform: rotate(15deg); }
+
+/* ==========================================================================
+   BARRE DE RECHERCHE
+   ========================================================================== */
+.search-container {
+    position: relative;
+    padding: 1rem 2.5rem;
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border);
+}
+.search-input {
+    width: 100%;
+    padding: 14px 14px 14px 42px;
+    border: none;
+    background: transparent;
+    font-size: 0.95rem;
+    color: var(--color-text-main);
+    outline: none;
+}
+.search-icon {
+    position: absolute;
+    left: calc(2.5rem + 12px);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-muted);
+}
+
+/* ==========================================================================
+   DRAG & DROP (Glisser-Déposer)
+   ========================================================================== */
+.task-item { cursor: grab; }
+.task-item:active { cursor: grabbing; }
+
+/* La poignée pour attraper la tâche */
+.drag-handle {
+    color: var(--color-border);
+    cursor: grab;
+    margin-right: 8px;
+    margin-top: 2px;
+    transition: color var(--transition-fast);
+}
+.task-item:hover .drag-handle { color: var(--color-text-muted); }
+
+/* Styles appliqués PENDANT qu'on glisse un élément */
+.task-item.dragging {
+    opacity: 0.4;
+    background: var(--color-bg-body);
+    box-shadow: var(--shadow-lg);
+    border-radius: var(--radius-md);
+    transform: scale(0.98);
+}
+
+/* Style appliqué sur l'élément SUR LEQUEL on survole */
+.task-item.drag-over {
+    border-top: 3px dashed var(--color-primary);
+    transform: translateY(4px);
+}

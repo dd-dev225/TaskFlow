@@ -18,8 +18,10 @@ const State = {
     tasks: [],
     currentFilter: 'all',
     currentPriority: 'normale',
+    searchQuery: '', 
     notificationTimeout: null,
-    wasJustCompleted: false
+    wasJustCompleted: false,
+    draggedId: null
 };
 
 // Références DOM (mises en cache pour la performance)
@@ -47,6 +49,10 @@ const DOM = {
     clearCompleted: document.getElementById('clearCompleted'),
     exportBtn:      document.getElementById('exportBtn'),
     importInput:    document.getElementById('importInput'),
+    themeToggle:    document.getElementById('themeToggle'),
+    moonIcon:       document.getElementById('moonIcon'),
+    sunIcon:        document.getElementById('sunIcon'),
+    searchInput:    document.getElementById('searchInput'),
     liveClock:      document.getElementById('liveClock')
 };
 
@@ -282,12 +288,21 @@ const getDueBadge = (dueDate, completed) => {
 
 // Filtrage
 const getFilteredTasks = () => {
-    switch (State.currentFilter) {
-        case 'active':    return State.tasks.filter(t => !t.completed);
-        case 'completed': return State.tasks.filter(t => t.completed);
-        case 'urgent':    return State.tasks.filter(t => t.priority === 'urgent' && !t.completed);
-        default:          return State.tasks;
+    let filtered = State.tasks;
+
+    // 1. Filtrage par statut
+    if (State.currentFilter === 'active') filtered = filtered.filter(t => !t.completed);
+    else if (State.currentFilter === 'completed') filtered = filtered.filter(t => t.completed);
+    else if (State.currentFilter === 'urgent') filtered = filtered.filter(t => t.priority === 'urgent' && !t.completed);
+
+    // 2. Filtrage par RECHERCHE "En direct"
+    if (State.searchQuery) {
+        filtered = filtered.filter(t => 
+            t.text.toLowerCase().includes(State.searchQuery)
+        );
     }
+
+    return filtered;
 };
 
 // ==========================================================================
@@ -312,6 +327,11 @@ const createTaskElement = (task) => {
     }
 
     li.innerHTML = `
+        <!-- NOUVELLE POIGNÉE DRAG & DROP -->
+        <div class="drag-handle" title="Glisser pour réorganiser">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+        </div>
+
         <button class="task-checkbox ${task.completed ? 'checked' : ''}" role="checkbox" aria-checked="${task.completed}" aria-label="Marquer comme terminé"></button>
         <div class="task-content">
             <div class="task-header">
@@ -364,6 +384,49 @@ const createTaskElement = (task) => {
             showNotification('Souvenir ajouté avec succès !', 'success');
         } catch (error) {
             showNotification('Erreur lors de l\'ajout de la photo.', 'error');
+        }
+    });
+
+    // ==========================================
+    // LOGIQUE DRAG & DROP
+    // ==========================================
+    li.setAttribute('draggable', 'true');
+    
+    li.addEventListener('dragstart', (e) => {
+        State.draggedId = task.id;
+        setTimeout(() => li.classList.add('dragging'), 0);
+    });
+
+    li.addEventListener('dragend', () => {
+        li.classList.remove('dragging');
+        document.querySelectorAll('.task-item').forEach(el => el.classList.remove('drag-over'));
+        State.draggedId = null;
+    });
+
+    li.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (State.draggedId !== task.id) {
+            li.classList.add('drag-over');
+        }
+    });
+
+    li.addEventListener('dragleave', () => {
+        li.classList.remove('drag-over');
+    });
+
+    li.addEventListener('drop', (e) => {
+        e.preventDefault();
+        li.classList.remove('drag-over');
+        
+        if (State.draggedId && State.draggedId !== task.id) {
+            const draggedIndex = State.tasks.findIndex(t => t.id === State.draggedId);
+            const targetIndex = State.tasks.findIndex(t => t.id === task.id);
+            
+            const [draggedItem] = State.tasks.splice(draggedIndex, 1);
+            State.tasks.splice(targetIndex, 0, draggedItem);
+            
+            saveTasks();
+            renderTasks();
         }
     });
 
@@ -635,7 +698,33 @@ const init = () => {
     DOM.exportBtn.addEventListener('click', exportData);
     DOM.importInput.addEventListener('change', importData);
 
-    // 6. Gestion de la modale (Fermeture)
+    // 6. Barre de Recherche en direct
+    DOM.searchInput.addEventListener('input', (e) => {
+        State.searchQuery = e.target.value.toLowerCase().trim();
+        renderTasks(); // Le filtrage s'applique instantanément !
+    });
+
+    // 7. Gestion du Mode Sombre
+    const savedTheme = localStorage.getItem('taskflow_theme') || 'light';
+    if (savedTheme === 'dark') {
+        document.body.classList.add('dark-mode');
+        DOM.moonIcon.style.display = 'none';
+        DOM.sunIcon.style.display = 'block';
+    }
+
+    DOM.themeToggle.addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const isDark = document.body.classList.contains('dark-mode');
+        
+        // Sauvegarde le choix
+        localStorage.setItem('taskflow_theme', isDark ? 'dark' : 'light');
+        
+        // Change l'icône
+        DOM.moonIcon.style.display = isDark ? 'none' : 'block';
+        DOM.sunIcon.style.display = isDark ? 'block' : 'none';
+    });
+
+    // 8. Gestion de la modale (Fermeture)
     DOM.modalClose.addEventListener('click', closeModal);
     DOM.imageModal.addEventListener('click', (e) => {
         if (e.target === DOM.imageModal) closeModal(); // Clic à l'extérieur
