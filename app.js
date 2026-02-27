@@ -1,17 +1,29 @@
-// Configuration
+/**
+ * TASKFLOW - Gestionnaire de tâches moderne
+ * Architecture modulaire ES6+
+ */
+
+// ==========================================================================
+// CONFIGURATION & ÉTAT
+// ==========================================================================
 const CONFIG = {
-    PICSUM_URL:  'https://picsum.photos/seed',
-    STORAGE_KEY: 'taskflow_tasks',
-    MAX_IMAGES:  3
+    // On utilise LoremFlickr qui permet de chercher par mots-clés
+    IMAGE_API_URL: 'https://loremflickr.com/300/200', 
+    STORAGE_KEY: 'taskflow_data_v2',
+    MAX_IMAGES:  3,
+    NOTIFICATION_DURATION: 3000
 };
 
-// Etat global
-let tasks          = [];
-let currentFilter  = 'all';
-let currentPriority = 'normale';
+const State = {
+    tasks: [],
+    currentFilter: 'all',
+    currentPriority: 'normale',
+    notificationTimeout: null,
+    wasJustCompleted: false
+};
 
-// Références DOM
-const elements = {
+// Références DOM (inchangé)
+const DOM = {
     taskForm:       document.getElementById('taskForm'),
     taskInput:      document.getElementById('taskInput'),
     dateInput:      document.getElementById('dateInput'),
@@ -32,431 +44,491 @@ const elements = {
     modalImage:     document.getElementById('modalImage'),
     modalClose:     document.getElementById('modalClose'),
     notification:   document.getElementById('notification'),
-    addBtn:         document.getElementById('addBtn'),
     clearCompleted: document.getElementById('clearCompleted'),
     liveClock:      document.getElementById('liveClock')
 };
 
-// ---- LOCALSTORAGE ----
+// ==========================================================================
+// UTILITAIRES
+// ==========================================================================
 
-function loadTasks() {
-    try {
-        const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
-        tasks = stored ? JSON.parse(stored) : [];
-    } catch (e) {
-        tasks = [];
-    }
-}
-
-function saveTasks() {
-    try {
-        localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(tasks));
-    } catch (e) {
-        showNotification('Erreur de sauvegarde.', 'error');
-    }
-}
-
-// ---- HORLOGE EN DIRECT ----
-
-function startClock() {
-    function tick() {
-        var now  = new Date();
-        var jour = now.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-        var heure = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        elements.liveClock.textContent = jour + '  ' + heure;
-    }
-    tick();
-    setInterval(tick, 1000);
-}
-
-// ---- NOTIFICATIONS ----
-
-function showNotification(message, type) {
-    var t = type || 'success';
-    elements.notification.textContent = message;
-    elements.notification.className = 'notification ' + t + ' show';
-    setTimeout(function () {
-        elements.notification.classList.remove('show');
-    }, 3000);
-}
-
-// ---- STATISTIQUES ET PROGRESSION ----
-
-function updateStats() {
-    var total     = tasks.length;
-    var completed = tasks.filter(function (t) { return t.completed; }).length;
-    var active    = total - completed;
-    var urgent    = tasks.filter(function (t) { return t.priority === 'urgent' && !t.completed; }).length;
-    var pct       = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-    elements.totalTasks.textContent     = total;
-    elements.activeTasks.textContent    = active;
-    elements.completedTasks.textContent = completed;
-    elements.urgentTasks.textContent    = urgent;
-
-    elements.progressBar.style.width = pct + '%';
-    elements.progressLabel.textContent = pct + ' % accompli';
-    elements.progressWrapper.setAttribute('aria-valuenow', pct);
-}
-
-// ---- ETAT VIDE ----
-
-var emptyMessages = {
-    all:       { title: 'Aucune tâche pour le moment',        msg: 'Commencez par ajouter votre première tâche ci-dessus.' },
-    active:    { title: 'Toutes les tâches sont terminées !', msg: 'Bien joué, vous êtes à jour.' },
-    completed: { title: 'Aucune tâche terminée',              msg: 'Cochez une tâche pour la voir apparaître ici.' },
-    urgent:    { title: 'Aucune tâche urgente',               msg: 'Pas d\'urgence en vue, profitez-en !' }
+// Échappement HTML
+const escapeHtml = (unsafe) => {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 };
 
-function toggleEmptyState() {
-    var filtered = getFilteredTasks();
-    var show     = filtered.length === 0;
+// Extraction de mots-clés intelligents pour la recherche d'images
+const extractKeywords = (text) => {
+    // Mots "poubelles" à ignorer pour avoir des images pertinentes
+    const stopWords = new Set(['le','la','les','un','une','des','de','du','pour','avec','sans','sur','dans','et','ou','mais','donc','or','ni','car','faire','travailler','projet','projets','tache']);
+    
+    const words = text.toLowerCase()
+        // Garde les lettres, chiffres et accents français
+        .replace(/[^\w\sàâäéèêëîïôöùûüç-]/g, '') 
+        .split(/\s+/)
+        // Ne garde que les mots de plus de 3 lettres qui ne sont pas dans les stopWords
+        .filter(w => w.length > 3 && !stopWords.has(w));
+    
+    // On garde les 2 mots les plus pertinents, séparés par une virgule pour LoremFlickr
+    return words.slice(0, 2).join(',') || 'business,work';
+};
 
-    elements.emptyState.style.display  = show ? 'block' : 'none';
-    elements.taskList.style.display    = show ? 'none'  : 'block';
+// Génération d'URL d'images dynamiques basées sur le champ lexical
+const generateImages = (text) => {
+    const keywords = extractKeywords(text);
+    const seed = Date.now(); // Permet d'avoir des images différentes à chaque fois
+    
+    // Crée 3 URLs avec le mot clé. L'argument "lock" permet d'avoir 3 images différentes de la même catégorie
+    return Array.from({ length: CONFIG.MAX_IMAGES }, (_, i) => 
+        `${CONFIG.IMAGE_API_URL}/${encodeURIComponent(keywords)}?lock=${seed + i}`
+    );
+};
+
+// Système de notification (Toast)
+const showNotification = (message, type = 'success') => {
+    if (State.notificationTimeout) clearTimeout(State.notificationTimeout);
+    
+    // Icônes dynamiques selon le type
+    const icons = {
+        success: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`,
+        error:   `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`,
+        warning: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`
+    };
+
+    DOM.notification.innerHTML = `${icons[type] || icons.success} <span>${escapeHtml(message)}</span>`;
+    DOM.notification.className = `notification ${type} show`;
+    
+    State.notificationTimeout = setTimeout(() => {
+        DOM.notification.classList.remove('show');
+    }, CONFIG.NOTIFICATION_DURATION);
+};
+
+// Confettis en pur JS (Effet Premium)
+const fireConfetti = () => {
+    const colors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#3b82f6'];
+    for (let i = 0; i < 60; i++) {
+        const confetti = document.createElement('div');
+        confetti.style.position = 'fixed';
+        confetti.style.left = `${Math.random() * 100}vw`;
+        confetti.style.top = `-10px`;
+        confetti.style.width = `${Math.random() * 8 + 6}px`;
+        confetti.style.height = `${Math.random() * 4 + 4}px`;
+        confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        confetti.style.zIndex = '99999';
+        confetti.style.pointerEvents = 'none';
+        confetti.style.transition = `transform ${Math.random() * 2 + 1}s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity ${Math.random() * 2 + 1}s ease`;
+        
+        document.body.appendChild(confetti);
+
+        // Déclencher l'animation
+        requestAnimationFrame(() => {
+            confetti.style.transform = `translate3d(${Math.random() * 300 - 150}px, ${window.innerHeight + 50}px, 0) rotate(${Math.random() * 720}deg)`;
+            confetti.style.opacity = '0';
+        });
+
+        // Nettoyage
+        setTimeout(() => confetti.remove(), 3000);
+    }
+};
+
+// ==========================================================================
+// GESTION DES DONNÉES (LocalStorage)
+// ==========================================================================
+const loadTasks = () => {
+    try {
+        const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
+        State.tasks = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        console.error("Erreur lors du chargement des tâches", e);
+        State.tasks = [];
+    }
+};
+
+const saveTasks = () => {
+    try {
+        localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(State.tasks));
+    } catch (e) {
+        showNotification('Erreur lors de la sauvegarde.', 'error');
+    }
+};
+
+// ==========================================================================
+// LOGIQUE MÉTIER & AFFICHAGE
+// ==========================================================================
+
+// Horloge intelligente
+const startClock = () => {
+    const formatter = new Intl.DateTimeFormat('fr-FR', {
+        weekday: 'short', day: 'numeric', month: 'short',
+        hour: '2-digit', minute: '2-digit'
+    });
+    
+    const tick = () => {
+        DOM.liveClock.textContent = formatter.format(new Date()).replace(',', ' -');
+    };
+    
+    tick();
+    setInterval(tick, 30000); // Mise à jour toutes les 30s (pas besoin de la seconde)
+};
+
+// Mise à jour des statistiques et de la barre de progression
+const updateStats = () => {
+    const total = State.tasks.length;
+    const completed = State.tasks.filter(t => t.completed).length;
+    const active = total - completed;
+    const urgent = State.tasks.filter(t => t.priority === 'urgent' && !t.completed).length;
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    // Mise à jour du DOM
+    DOM.totalTasks.textContent = total;
+    DOM.activeTasks.textContent = active;
+    DOM.completedTasks.textContent = completed;
+    DOM.urgentTasks.textContent = urgent;
+
+    DOM.progressBar.style.width = `${pct}%`;
+    DOM.progressLabel.textContent = `${pct} % accompli`;
+    DOM.progressWrapper.setAttribute('aria-valuenow', pct);
+
+    // Effet "Waouh" : 100% accompli
+    if (pct === 100 && total > 0) {
+        DOM.progressLabel.textContent = `🎉 100 % accompli !`;
+        DOM.progressBar.style.boxShadow = "0 0 15px rgba(16, 185, 129, 0.8)";
+        DOM.progressBar.style.background = "var(--color-success)";
+        if (!State.wasJustCompleted) {
+            fireConfetti();
+            showNotification("Félicitations ! Toutes vos tâches sont terminées.", "success");
+            State.wasJustCompleted = true;
+        }
+    } else {
+        DOM.progressBar.style.boxShadow = "";
+        DOM.progressBar.style.background = "";
+        State.wasJustCompleted = false;
+    }
+};
+
+// Gestion de l'état vide (Empty State)
+const toggleEmptyState = () => {
+    const filtered = getFilteredTasks();
+    const show = filtered.length === 0;
+
+    const messages = {
+        all:       { title: 'Aucune tâche pour le moment', msg: 'Commencez par ajouter votre première tâche ci-dessus.' },
+        active:    { title: 'Toutes les tâches sont terminées !', msg: 'Bien joué, vous êtes à jour. Prenez un café ☕' },
+        completed: { title: 'Aucune tâche terminée', msg: 'Cochez une tâche pour la voir apparaître ici.' },
+        urgent:    { title: 'Aucune urgence', msg: 'Pas de stress en vue, profitez-en !' }
+    };
+
+    DOM.emptyState.style.display = show ? 'block' : 'none';
+    DOM.taskList.style.display = show ? 'none' : 'block';
 
     if (show) {
-        var msg = emptyMessages[currentFilter] || emptyMessages.all;
-        elements.emptyTitle.textContent   = msg.title;
-        elements.emptyMessage.textContent = msg.msg;
+        const msg = messages[State.currentFilter] || messages.all;
+        DOM.emptyTitle.textContent = msg.title;
+        DOM.emptyMessage.textContent = msg.msg;
     }
-}
+};
 
-// ---- FILTRAGE ----
-
-function getFilteredTasks() {
-    if (currentFilter === 'active')    return tasks.filter(function (t) { return !t.completed; });
-    if (currentFilter === 'completed') return tasks.filter(function (t) { return t.completed; });
-    if (currentFilter === 'urgent')    return tasks.filter(function (t) { return t.priority === 'urgent' && !t.completed; });
-    return tasks;
-}
-
-// ---- DATE D'ECHEANCE ----
-
-function getDueBadge(dueDate, completed) {
+// Calcul des badges de date
+const getDueBadge = (dueDate, completed) => {
     if (!dueDate || completed) return null;
 
-    var today    = new Date(); today.setHours(0,0,0,0);
-    var due      = new Date(dueDate); due.setHours(0,0,0,0);
-    var diffDays = Math.round((due - today) / 86400000);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const due = new Date(dueDate); due.setHours(0,0,0,0);
+    const diffDays = Math.round((due - today) / 86400000);
 
-    if (diffDays < 0)  return { text: 'En retard',           cls: 'overdue' };
-    if (diffDays === 0) return { text: 'Aujourd\'hui',        cls: 'today' };
-    if (diffDays === 1) return { text: 'Demain',              cls: 'tomorrow' };
-    return               { text: 'Dans ' + diffDays + ' j',  cls: 'upcoming' };
-}
+    if (diffDays < 0) return { text: 'En retard', cls: 'overdue' };
+    if (diffDays === 0) return { text: "Aujourd'hui", cls: 'today' };
+    if (diffDays === 1) return { text: 'Demain', cls: 'tomorrow' };
+    return { text: `Dans ${diffDays} j`, cls: 'upcoming' };
+};
 
-// ---- SECURITE HTML ----
-
-function escapeHtml(text) {
-    var div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// ---- IMAGES DYNAMIQUES ----
-
-function generateImages(text) {
-    var keyword = extractKeywords(text).split(' ')[0] || 'work';
-    var seed    = Date.now();
-    var imgs    = [];
-    for (var i = 0; i < CONFIG.MAX_IMAGES; i++) {
-        imgs.push(CONFIG.PICSUM_URL + '/' + keyword + (seed + i) + '/200/200');
+// Filtrage
+const getFilteredTasks = () => {
+    switch (State.currentFilter) {
+        case 'active':    return State.tasks.filter(t => !t.completed);
+        case 'completed': return State.tasks.filter(t => t.completed);
+        case 'urgent':    return State.tasks.filter(t => t.priority === 'urgent' && !t.completed);
+        default:          return State.tasks;
     }
-    return imgs;
-}
+};
 
-function extractKeywords(text) {
-    var stopWords = ['le','la','les','un','une','des','de','du','pour','avec','sans','sur','dans','et','ou','mais','donc','or','ni','car'];
-    var words = text.toLowerCase()
-        .replace(/[^\w\s]/g, '')
-        .split(/\s+/)
-        .filter(function (w) { return w.length > 2 && !stopWords.includes(w); });
-    return words.slice(0, 3).join(' ') || text.slice(0, 20);
-}
+// ==========================================================================
+// CRÉATION ET GESTION DES TÂCHES (DOM)
+// ==========================================================================
 
-// ---- CREATION D'UN ELEMENT TACHE ----
-
-function createTaskElement(task) {
-    var li       = document.createElement('li');
-    var isOverdue = task.dueDate && !task.completed && (new Date(task.dueDate) < new Date().setHours(0,0,0,0));
-    var classes  = ['task-item', 'priority-' + (task.priority || 'normale')];
-    if (task.completed) classes.push('completed');
-    if (isOverdue)      classes.push('overdue');
-    li.className = classes.join(' ');
+const createTaskElement = (task) => {
+    const li = document.createElement('li');
+    const isOverdue = task.dueDate && !task.completed && (new Date(task.dueDate) < new Date().setHours(0,0,0,0));
+    
+    li.className = `task-item priority-${task.priority} ${task.completed ? 'completed' : ''} ${isOverdue ? 'overdue' : ''}`;
     li.dataset.id = task.id;
 
-    // Badge priorité
-    var badgePriority = '<span class="badge-priority badge-' + task.priority + '">' + task.priority + '</span>';
+    const dueInfo = getDueBadge(task.dueDate, task.completed);
+    const dateCreee = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(task.createdAt));
 
-    // Badge échéance
-    var badgeDue = '';
-    var dueInfo  = getDueBadge(task.dueDate, task.completed);
-    if (dueInfo) {
-        badgeDue = '<span class="badge-due ' + dueInfo.cls + '">' + dueInfo.text + '</span>';
+    let imagesHtml = '';
+    if (task.images?.length > 0) {
+        imagesHtml = `<div class="task-image-container">
+            ${task.images.map(src => `<img src="${src}" alt="Preuve de complétion" class="task-image" loading="lazy">`).join('')}
+        </div>`;
     }
 
-    // Date de création
-    var dateCreee = new Date(task.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+    // Utilisation des Template Literals pour une structure claire
+    li.innerHTML = `
+        <button class="task-checkbox ${task.completed ? 'checked' : ''}" role="checkbox" aria-checked="${task.completed}" aria-label="Marquer comme terminé"></button>
+        <div class="task-content">
+            <div class="task-header">
+                <span class="task-text">${escapeHtml(task.text)}</span>
+                <span class="badge-priority badge-${task.priority}">${task.priority}</span>
+                ${dueInfo ? `<span class="badge-due ${dueInfo.cls}">${dueInfo.text}</span>` : ''}
+            </div>
+            <div class="task-meta">Ajoutée le ${dateCreee}</div>
+            ${imagesHtml}
+        </div>
+        <div class="task-actions">
+            <button class="btn-icon btn-edit" aria-label="Modifier la tâche" title="Modifier">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button class="btn-icon btn-delete" aria-label="Supprimer la tâche" title="Supprimer">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+        </div>
+    `;
 
-    // Images
-    var imagesHtml = '';
-    if (task.images && task.images.length > 0) {
-        var imgTags = task.images.map(function (src) {
-            return '<img src="' + src + '" alt="Image associée à la tâche" class="task-image" loading="lazy">';
-        }).join('');
-        imagesHtml = '<div class="task-image-container">' + imgTags + '</div>';
-    }
-
-    li.innerHTML =
-        '<div class="task-checkbox ' + (task.completed ? 'checked' : '') + '"' +
-            ' role="checkbox" aria-checked="' + task.completed + '" tabindex="0"></div>' +
-        '<div class="task-content">' +
-            '<div class="task-header">' +
-                '<span class="task-text">' + escapeHtml(task.text) + '</span>' +
-                badgePriority +
-                badgeDue +
-            '</div>' +
-            '<div class="task-meta">Ajoutée le ' + dateCreee + '</div>' +
-            imagesHtml +
-        '</div>' +
-        '<div class="task-actions">' +
-            '<button class="btn-icon btn-edit" aria-label="Modifier la tâche">' +
-                '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
-                    '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
-                    '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>' +
-                '</svg>' +
-            '</button>' +
-            '<button class="btn-icon btn-delete" aria-label="Supprimer la tâche">' +
-                '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
-                    '<polyline points="3 6 5 6 21 6"></polyline>' +
-                    '<path d="M19 6l-1 14H6L5 6"></path>' +
-                    '<path d="M10 11v6M14 11v6"></path>' +
-                    '<path d="M9 6V4h6v2"></path>' +
-                '</svg>' +
-            '</button>' +
-        '</div>';
-
-    // Checkbox
-    var checkbox = li.querySelector('.task-checkbox');
-    checkbox.addEventListener('click', function () { toggleTask(task.id); });
-    checkbox.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleTask(task.id); }
-    });
-
-    // Bouton éditer
-    var editBtn = li.querySelector('.btn-edit');
-    editBtn.addEventListener('click', function () { editTask(task.id); });
-
-    // Bouton supprimer
-    var deleteBtn = li.querySelector('.btn-delete');
-    deleteBtn.addEventListener('click', function () { deleteTask(task.id); });
-
-    // Clic sur les images
-    var images = li.querySelectorAll('.task-image');
-    images.forEach(function (img) {
-        img.addEventListener('click', function () { openModal(img.src); });
+    // Attachement des événements
+    li.querySelector('.task-checkbox').addEventListener('click', () => toggleTask(task.id));
+    li.querySelector('.btn-edit').addEventListener('click', () => editTask(task.id));
+    li.querySelector('.btn-delete').addEventListener('click', () => deleteTask(task.id));
+    
+    // Zoom sur les images
+    li.querySelectorAll('.task-image').forEach(img => {
+        img.addEventListener('click', () => openModal(img.src));
     });
 
     return li;
-}
+};
 
-// ---- AFFICHAGE ----
-
-function renderTasks() {
-    elements.taskList.innerHTML = '';
-    getFilteredTasks().forEach(function (task) {
-        elements.taskList.appendChild(createTaskElement(task));
+const renderTasks = () => {
+    DOM.taskList.innerHTML = '';
+    getFilteredTasks().forEach(task => {
+        DOM.taskList.appendChild(createTaskElement(task));
     });
     toggleEmptyState();
     updateStats();
-}
+};
 
-// ---- AJOUTER ----
+// ==========================================================================
+// ACTIONS (Ajouter, Modifier, Supprimer)
+// ==========================================================================
 
-function addTask(text, dueDate, priority) {
-    var task = {
-        id:          Date.now().toString(),
-        text:        text.trim(),
-        priority:    priority || 'normale',
-        dueDate:     dueDate || null,
-        completed:   false,
-        createdAt:   new Date().toISOString(),
+const addTask = (text, dueDate, priority) => {
+    const newTask = {
+        id: Date.now().toString(),
+        text: text.trim(),
+        priority: priority || 'normale',
+        dueDate: dueDate || null,
+        completed: false,
+        createdAt: new Date().toISOString(),
         completedAt: null,
-        images:      []
+        images: []
     };
-    tasks.unshift(task);
+    
+    State.tasks.unshift(newTask); // Ajoute au début
     saveTasks();
     renderTasks();
-    showNotification('Tâche ajoutée.');
-}
+    showNotification('Tâche ajoutée avec succès !');
+};
 
-// ---- COCHER / DECOCHER ----
-
-function toggleTask(id) {
-    var task = tasks.find(function (t) { return t.id === id; });
+const toggleTask = (id) => {
+    const task = State.tasks.find(t => t.id === id);
     if (!task) return;
 
-    task.completed   = !task.completed;
+    task.completed = !task.completed;
     task.completedAt = task.completed ? new Date().toISOString() : null;
 
     if (task.completed) {
         task.images = generateImages(task.text);
-        showNotification('Tâche marquée comme terminée.', 'success');
+        showNotification('Tâche terminée, bien joué !', 'success');
     } else {
-        task.images = [];
+        task.images = []; // On enlève les images si on décoche
     }
 
     saveTasks();
     renderTasks();
-}
+};
 
-// ---- MODIFIER (édition inline) ----
-
-function editTask(id) {
-    var task = tasks.find(function (t) { return t.id === id; });
+const editTask = (id) => {
+    const task = State.tasks.find(t => t.id === id);
     if (!task) return;
 
-    var li       = document.querySelector('[data-id="' + id + '"]');
-    var textSpan = li.querySelector('.task-text');
-    var original = task.text;
+    const li = document.querySelector(`[data-id="${id}"]`);
+    const textSpan = li.querySelector('.task-text');
+    const originalText = task.text;
 
-    // Remplacer le texte par un champ d'édition
-    textSpan.innerHTML = '<input class="task-edit-input" type="text" value="' + escapeHtml(original) + '" maxlength="120">';
-    var input = textSpan.querySelector('.task-edit-input');
+    // Remplacement par un input
+    textSpan.innerHTML = `<input class="task-edit-input" type="text" value="${escapeHtml(originalText)}" maxlength="120">`;
+    const input = textSpan.querySelector('.task-edit-input');
+    
     input.focus();
-    input.select();
+    // Placer le curseur à la fin du texte
+    input.setSelectionRange(input.value.length, input.value.length);
 
-    function saveEdit() {
-        var newText = input.value.trim();
-        if (newText && newText !== original) {
+    const saveEdit = () => {
+        const newText = input.value.trim();
+        if (newText && newText !== originalText) {
             task.text = newText;
             saveTasks();
-            showNotification('Tâche modifiée.', 'success');
+            showNotification('Tâche mise à jour.');
         }
-        renderTasks();
-    }
+        renderTasks(); // Re-rend l'élément dans tous les cas
+    };
 
-    input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter')  { e.preventDefault(); saveEdit(); }
-        if (e.key === 'Escape') { renderTasks(); }
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); } // Blur déclenche saveEdit
+        if (e.key === 'Escape') { renderTasks(); } // Annuler
     });
     input.addEventListener('blur', saveEdit);
-}
+};
 
-// ---- SUPPRIMER ----
-
-function deleteTask(id) {
-    var el = document.querySelector('[data-id="' + id + '"]');
+const deleteTask = (id) => {
+    const el = document.querySelector(`[data-id="${id}"]`);
     if (el) {
         el.classList.add('deleting');
-        setTimeout(function () {
-            tasks = tasks.filter(function (t) { return t.id !== id; });
+        // On attend la fin de l'animation CSS (0.3s) avant de retirer du DOM
+        setTimeout(() => {
+            State.tasks = State.tasks.filter(t => t.id !== id);
             saveTasks();
             renderTasks();
-            showNotification('Tâche supprimée.', 'success');
+            showNotification('Tâche supprimée.', 'warning');
         }, 300);
     }
-}
+};
 
-// ---- VIDER LES TÂCHES TERMINÉES ----
-
-function clearCompleted() {
-    var count = tasks.filter(function (t) { return t.completed; }).length;
+const clearCompleted = () => {
+    const count = State.tasks.filter(t => t.completed).length;
     if (count === 0) {
-        showNotification('Aucune tâche terminée à supprimer.', 'warning');
+        showNotification('Aucune tâche terminée à nettoyer.', 'warning');
         return;
     }
-    tasks = tasks.filter(function (t) { return !t.completed; });
-    saveTasks();
-    renderTasks();
-    showNotification(count + ' tâche(s) supprimée(s).', 'success');
-}
+    
+    // Animation de suppression pour toutes les tâches terminées visibles
+    const completedEls = document.querySelectorAll('.task-item.completed');
+    completedEls.forEach(el => el.classList.add('deleting'));
 
-// ---- MODALE ----
+    setTimeout(() => {
+        State.tasks = State.tasks.filter(t => !t.completed);
+        saveTasks();
+        renderTasks();
+        showNotification(`${count} tâche(s) nettoyée(s).`, 'success');
+    }, 300);
+};
 
-function openModal(src) {
-    elements.modalImage.src = src;
-    elements.imageModal.classList.add('active');
-    document.body.style.overflow = 'hidden';
-}
+// ==========================================================================
+// MODALE D'IMAGE & FILTRES
+// ==========================================================================
 
-function closeModal() {
-    elements.imageModal.classList.remove('active');
+const openModal = (src) => {
+    DOM.modalImage.src = src;
+    DOM.imageModal.classList.add('active');
+    DOM.imageModal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden'; // Empêche le scroll en arrière-plan
+};
+
+const closeModal = () => {
+    DOM.imageModal.classList.remove('active');
+    DOM.imageModal.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
-}
+};
 
-// ---- CHANGER LE FILTRE ----
-
-function setFilter(filter) {
-    currentFilter = filter;
-    elements.filterBtns.forEach(function (btn) {
-        var active = btn.dataset.filter === filter;
-        btn.classList.toggle('active', active);
-        btn.setAttribute('aria-pressed', active);
+const setFilter = (filter) => {
+    State.currentFilter = filter;
+    DOM.filterBtns.forEach(btn => {
+        const isActive = btn.dataset.filter === filter;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', isActive);
     });
     renderTasks();
-}
+};
 
-// ---- INITIALISATION ----
+// ==========================================================================
+// INITIALISATION ET ÉCOUTEURS D'ÉVÉNEMENTS
+// ==========================================================================
 
-function init() {
+const init = () => {
     loadTasks();
     startClock();
     renderTasks();
 
-    // Soumission du formulaire
-    elements.taskForm.addEventListener('submit', function (e) {
+    // 1. Ajout de tâche
+    DOM.taskForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        var text    = elements.taskInput.value.trim();
-        var dueDate = elements.dateInput.value;
+        const text = DOM.taskInput.value.trim();
+        const dueDate = DOM.dateInput.value;
+        
         if (!text) return;
 
-        // Avertir si la date est dans le passé
+        // Avertissement si la date est dans le passé
         if (dueDate) {
-            var due   = new Date(dueDate); due.setHours(0,0,0,0);
-            var today = new Date();        today.setHours(0,0,0,0);
+            const due = new Date(dueDate).setHours(0,0,0,0);
+            const today = new Date().setHours(0,0,0,0);
             if (due < today) {
                 showNotification('Attention : la date choisie est déjà passée.', 'warning');
             }
         }
 
-        addTask(text, dueDate, currentPriority);
-        elements.taskInput.value = '';
-        elements.dateInput.value = '';
-        elements.taskInput.focus();
+        addTask(text, dueDate, State.currentPriority);
+        
+        // Reset du formulaire
+        DOM.taskInput.value = '';
+        DOM.dateInput.value = '';
+        DOM.taskInput.focus();
     });
 
-    // Sélection de la priorité
-    elements.priorityBtns.forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            elements.priorityBtns.forEach(function (b) { b.classList.remove('active'); });
+    // 2. Sélection de priorité
+    DOM.priorityBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            DOM.priorityBtns.forEach(b => {
+                b.classList.remove('active');
+                b.setAttribute('aria-pressed', 'false');
+            });
             btn.classList.add('active');
-            currentPriority = btn.dataset.priority;
+            btn.setAttribute('aria-pressed', 'true');
+            State.currentPriority = btn.dataset.priority;
         });
     });
 
-    // Filtres
-    elements.filterBtns.forEach(function (btn) {
-        btn.addEventListener('click', function () { setFilter(btn.dataset.filter); });
+    // 3. Filtres
+    DOM.filterBtns.forEach(btn => {
+        btn.addEventListener('click', () => setFilter(btn.dataset.filter));
     });
 
-    // Vider terminées
-    elements.clearCompleted.addEventListener('click', clearCompleted);
+    // 4. Nettoyage
+    DOM.clearCompleted.addEventListener('click', clearCompleted);
 
-    // Fermeture de la modale
-    elements.modalClose.addEventListener('click', closeModal);
-    elements.imageModal.addEventListener('click', function (e) {
-        if (e.target === elements.imageModal) closeModal();
+    // 5. Gestion de la modale (Fermeture)
+    DOM.modalClose.addEventListener('click', closeModal);
+    DOM.imageModal.addEventListener('click', (e) => {
+        if (e.target === DOM.imageModal) closeModal(); // Clic à l'extérieur
     });
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && elements.imageModal.classList.contains('active')) closeModal();
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && DOM.imageModal.classList.contains('active')) {
+            closeModal();
+        }
     });
 
-    // Message de bienvenue
-    if (tasks.length === 0) {
-        showNotification('Bienvenue sur TaskFlow ! Ajoutez votre première tâche.');
+    // 6. Message de bienvenue
+    if (State.tasks.length === 0) {
+        setTimeout(() => {
+            showNotification('Bienvenue sur TaskFlow ! Prêt à être productif ?');
+        }, 500);
     }
-}
+};
 
+// Lancement de l'application
 document.addEventListener('DOMContentLoaded', init);
