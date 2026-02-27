@@ -45,6 +45,8 @@ const DOM = {
     modalClose:     document.getElementById('modalClose'),
     notification:   document.getElementById('notification'),
     clearCompleted: document.getElementById('clearCompleted'),
+    exportBtn:      document.getElementById('exportBtn'),
+    importInput:    document.getElementById('importInput'),
     liveClock:      document.getElementById('liveClock')
 };
 
@@ -486,6 +488,68 @@ const clearCompleted = () => {
 };
 
 // ==========================================================================
+// EXPORT & IMPORT DES DONNÉES (Archive dans le temps)
+// ==========================================================================
+
+const exportData = () => {
+    if (State.tasks.length === 0) {
+        showNotification("Aucune tâche à sauvegarder.", "warning");
+        return;
+    }
+    
+    // Convertit les tâches (et les images) en texte JSON
+    const dataStr = JSON.stringify(State.tasks, null, 2);
+    
+    // Crée un fichier virtuel
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    
+    // Génère un nom de fichier avec la date du jour
+    const date = new Date().toISOString().split('T')[0];
+    const fileName = `TaskFlow_Archive_${date}.json`;
+    
+    // Simule un clic pour déclencher le téléchargement
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    
+    // Nettoyage
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showNotification("Archive téléchargée avec succès !", "success");
+};
+
+const importData = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const importedTasks = JSON.parse(e.target.result);
+            
+            // Vérifie que le fichier a le bon format (un tableau de tâches)
+            if (Array.isArray(importedTasks)) {
+                State.tasks = importedTasks; // Remplace les tâches actuelles
+                saveTasks();
+                renderTasks();
+                showNotification("Archive restaurée avec succès !", "success");
+            } else {
+                throw new Error("Format invalide");
+            }
+        } catch (error) {
+            showNotification("Erreur : Ce fichier n'est pas une archive valide.", "error");
+        }
+        // Réinitialise l'input pour pouvoir réimporter le même fichier si besoin
+        event.target.value = ""; 
+    };
+    reader.readAsText(file);
+};
+
+// ==========================================================================
 // MODALE D'IMAGE & FILTRES
 // ==========================================================================
 
@@ -567,7 +631,11 @@ const init = () => {
     // 4. Nettoyage
     DOM.clearCompleted.addEventListener('click', clearCompleted);
 
-    // 5. Gestion de la modale (Fermeture)
+    // 5. Export et Import
+    DOM.exportBtn.addEventListener('click', exportData);
+    DOM.importInput.addEventListener('change', importData);
+
+    // 6. Gestion de la modale (Fermeture)
     DOM.modalClose.addEventListener('click', closeModal);
     DOM.imageModal.addEventListener('click', (e) => {
         if (e.target === DOM.imageModal) closeModal(); // Clic à l'extérieur
