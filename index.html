@@ -3,24 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TaskFlow - Gestionnaire de tâches</title>
+    <meta name="description" content="TaskFlow - Un gestionnaire de tâches moderne, intuitif et performant pour booster votre productivité au quotidien.">
+    <meta name="theme-color" content="#667eea">
+    
+    <title>TaskFlow | Votre gestionnaire de tâches intelligent</title>
+
+    <!-- Préchargement des polices pour de meilleures performances -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Feuille de style -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <div class="app-container">
 
-        <!-- En-tête avec horloge, progression et statistiques -->
+        <!-- ==========================================
+             EN-TÊTE (Header) : Horloge & Statistiques
+             ========================================== -->
         <header class="app-header">
-
             <div class="header-top">
-                <h1>TaskFlow</h1>
-                <div class="live-clock" id="liveClock" aria-live="polite"></div>
+                <div class="logo-title">
+                    <!-- Icône SVG intégrée pour le logo -->
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle; margin-right: 8px;">
+                        <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path>
+                        <path d="M9 12l2 2 4-4"></path>
+                    </svg>
+                    <h1 style="display: inline-block; vertical-align: middle;">TaskFlow</h1>
+                </div>
+                <div class="live-clock" id="liveClock" aria-live="polite" title="Heure locale"></div>
             </div>
 
-            <!-- Barre de progression globale -->
+            <!-- Barre de progression de la productivité -->
             <div class="progress-section">
                 <div class="progress-bar-container" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressBarWrapper">
                     <div class="progress-bar" id="progressBar"></div>
@@ -28,8 +44,8 @@
                 <span class="progress-label" id="progressLabel">0 % accompli</span>
             </div>
 
-            <!-- Statistiques -->
-            <div class="stats-bar">
+            <!-- Tableau de bord des statistiques -->
+            <div class="stats-bar" aria-label="Statistiques des tâches">
                 <div class="stat-item">
                     <span class="stat-value" id="totalTasks">0</span>
                     <span class="stat-label">Total</span>
@@ -49,63 +65,90 @@
             </div>
         </header>
 
-        <!-- Formulaire d'ajout de tâche -->
-        <section class="task-form-section">
+        <!-- ==========================================
+             ZONE DE SAISIE : Ajout de nouvelle tâche
+             ========================================== -->
+        <section class="task-form-section" aria-labelledby="formTitle">
+            <h2 id="formTitle" class="sr-only">Ajouter une nouvelle tâche</h2>
+            
             <form class="task-form" id="taskForm" novalidate>
-
                 <div class="form-row">
-                    <label for="taskInput" class="sr-only">Nouvelle tâche</label>
-                    <input
-                        type="text"
-                        class="task-input"
-                        id="taskInput"
-                        name="tache"
-                        placeholder="Que devez-vous faire ?"
-                        required
-                        minlength="3"
-                        maxlength="120"
-                        aria-label="Nouvelle tâche"
+                    <label for="taskInput" class="sr-only">Description de la tâche</label>
+                    <input 
+                        type="text" 
+                        class="task-input" 
+                        id="taskInput" 
+                        name="tache" 
+                        placeholder="Que devez-vous accomplir aujourd'hui ?" 
+                        required 
+                        minlength="3" 
+                        maxlength="120" 
+                        aria-label="Description de la tâche"
+                        autocomplete="off"
                     >
-                    <input
-                        type="date"
-                        class="date-input"
-                        id="dateInput"
+                    
+                    <label for="dateInput" class="sr-only">Date d'échéance</label>
+                    <input 
+                        type="date" 
+                        class="date-input" 
+                        id="dateInput" 
                         aria-label="Date d'échéance"
                     >
-                    <button type="submit" class="btn btn-primary" id="addBtn">Ajouter</button>
+                    
+                    <button type="submit" class="btn btn-primary" id="addBtn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="margin-right: 4px;">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Ajouter
+                    </button>
                 </div>
 
-                <!-- Sélecteur de priorité -->
-                <div class="priority-row" role="group" aria-label="Priorité de la tâche">
-                    <span class="priority-label">Priorité :</span>
-                    <button type="button" class="priority-btn priority-faible" data-priority="faible">Faible</button>
-                    <button type="button" class="priority-btn priority-normale active" data-priority="normale">Normale</button>
-                    <button type="button" class="priority-btn priority-urgent" data-priority="urgent">Urgent</button>
-                </div>
-
+                <!-- Paramètres de la tâche (Priorité) -->
+                <fieldset class="priority-row">
+                    <legend class="sr-only">Sélectionnez la priorité de la tâche</legend>
+                    <span class="priority-label" aria-hidden="true">Priorité :</span>
+                    
+                    <button type="button" class="priority-btn priority-faible" data-priority="faible" aria-pressed="false">Faible</button>
+                    <button type="button" class="priority-btn priority-normale active" data-priority="normale" aria-pressed="true">Normale</button>
+                    <button type="button" class="priority-btn priority-urgent" data-priority="urgent" aria-pressed="false">Urgent</button>
+                </fieldset>
             </form>
         </section>
 
-        <!-- Navigation des filtres -->
-        <nav class="filters" aria-label="Filtres de tâches">
+        <!-- ==========================================
+             BARRE D'OUTILS : Filtres et Actions
+             ========================================== -->
+        <nav class="filters" aria-label="Filtrer l'affichage des tâches">
             <button class="filter-btn active" data-filter="all" aria-pressed="true">Toutes</button>
             <button class="filter-btn" data-filter="active" aria-pressed="false">Actives</button>
             <button class="filter-btn" data-filter="completed" aria-pressed="false">Terminées</button>
             <button class="filter-btn filter-urgent" data-filter="urgent" aria-pressed="false">Urgentes</button>
-            <button class="btn-clear" id="clearCompleted" type="button">Vider terminées</button>
+            
+            <!-- Bouton pour nettoyer la liste -->
+            <button class="btn-clear" id="clearCompleted" type="button" aria-label="Supprimer toutes les tâches terminées">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: middle;">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                Vider terminées
+            </button>
         </nav>
 
-        <!-- Contenu principal -->
-        <main>
-            <ul class="task-list" id="taskList" aria-label="Liste des tâches"></ul>
+        <!-- ==========================================
+             CONTENU PRINCIPAL : Liste des tâches
+             ========================================== -->
+        <main id="main-content" role="main">
+            <!-- Liste générée dynamiquement en JS -->
+            <ul class="task-list" id="taskList" aria-label="Votre liste de tâches"></ul>
 
-            <div class="empty-state" id="emptyState">
+            <!-- État vide (Empty State) -->
+            <div class="empty-state" id="emptyState" aria-live="polite">
                 <div class="empty-state-icon">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                        <rect x="3" y="4" width="18" height="18" rx="2"></rect>
-                        <line x1="16" y1="2" x2="16" y2="6"></line>
-                        <line x1="8" y1="2" x2="8" y2="6"></line>
-                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    <!-- Icône SVG d'état vide améliorée -->
+                    <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M9 11l3 3L22 4"></path>
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
                     </svg>
                 </div>
                 <h3 id="emptyTitle">Aucune tâche pour le moment</h3>
@@ -115,17 +158,22 @@
 
     </div>
 
+    <!-- ==========================================
+         ÉLÉMENTS HORS FLUX : Modale & Notifications
+         ========================================== -->
+         
     <!-- Modale d'aperçu des images -->
-    <div class="modal-overlay" id="imageModal" role="dialog" aria-modal="true" aria-label="Aperçu de l'image">
-        <button class="modal-close" id="modalClose" aria-label="Fermer">&#215;</button>
+    <dialog class="modal-overlay" id="imageModal" aria-label="Aperçu de l'image en plein écran">
+        <button class="modal-close" id="modalClose" aria-label="Fermer la modale" title="Fermer">&#215;</button>
         <div class="modal-content">
-            <img class="modal-image" id="modalImage" alt="Aperçu de la tâche">
+            <img class="modal-image" id="modalImage" alt="Aperçu détaillé de la tâche">
         </div>
-    </div>
+    </dialog>
 
-    <!-- Notification -->
-    <div class="notification" id="notification" role="alert" aria-live="polite"></div>
+    <!-- Système de notification (Toast) -->
+    <div class="notification" id="notification" role="status" aria-live="polite"></div>
 
+    <!-- Scripts -->
     <script src="app.js"></script>
 </body>
 </html>
