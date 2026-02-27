@@ -1,4 +1,5 @@
 .vscode/
+cours/
 *.log
 tmp/
 .gemini/
