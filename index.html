@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskFlow - Gestionnaire de tâches</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="app-container">
+
+        <!-- En-tête avec horloge, progression et statistiques -->
+        <header class="app-header">
+
+            <div class="header-top">
+                <h1>TaskFlow</h1>
+                <div class="live-clock" id="liveClock" aria-live="polite"></div>
+            </div>
+
+            <!-- Barre de progression globale -->
+            <div class="progress-section">
+                <div class="progress-bar-container" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressBarWrapper">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                <span class="progress-label" id="progressLabel">0 % accompli</span>
+            </div>
+
+            <!-- Statistiques -->
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <span class="stat-value" id="totalTasks">0</span>
+                    <span class="stat-label">Total</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="activeTasks">0</span>
+                    <span class="stat-label">Actives</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="completedTasks">0</span>
+                    <span class="stat-label">Terminées</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value stat-urgent" id="urgentTasks">0</span>
+                    <span class="stat-label">Urgentes</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Formulaire d'ajout de tâche -->
+        <section class="task-form-section">
+            <form class="task-form" id="taskForm" novalidate>
+
+                <div class="form-row">
+                    <label for="taskInput" class="sr-only">Nouvelle tâche</label>
+                    <input
+                        type="text"
+                        class="task-input"
+                        id="taskInput"
+                        name="tache"
+                        placeholder="Que devez-vous faire ?"
+                        required
+                        minlength="3"
+                        maxlength="120"
+                        aria-label="Nouvelle tâche"
+                    >
+                    <input
+                        type="date"
+                        class="date-input"
+                        id="dateInput"
+                        aria-label="Date d'échéance"
+                    >
+                    <button type="submit" class="btn btn-primary" id="addBtn">Ajouter</button>
+                </div>
+
+                <!-- Sélecteur de priorité -->
+                <div class="priority-row" role="group" aria-label="Priorité de la tâche">
+                    <span class="priority-label">Priorité :</span>
+                    <button type="button" class="priority-btn priority-faible" data-priority="faible">Faible</button>
+                    <button type="button" class="priority-btn priority-normale active" data-priority="normale">Normale</button>
+                    <button type="button" class="priority-btn priority-urgent" data-priority="urgent">Urgent</button>
+                </div>
+
+            </form>
+        </section>
+
+        <!-- Navigation des filtres -->
+        <nav class="filters" aria-label="Filtres de tâches">
+            <button class="filter-btn active" data-filter="all" aria-pressed="true">Toutes</button>
+            <button class="filter-btn" data-filter="active" aria-pressed="false">Actives</button>
+            <button class="filter-btn" data-filter="completed" aria-pressed="false">Terminées</button>
+            <button class="filter-btn filter-urgent" data-filter="urgent" aria-pressed="false">Urgentes</button>
+            <button class="btn-clear" id="clearCompleted" type="button">Vider terminées</button>
+        </nav>
+
+        <!-- Contenu principal -->
+        <main>
+            <ul class="task-list" id="taskList" aria-label="Liste des tâches"></ul>
+
+            <div class="empty-state" id="emptyState">
+                <div class="empty-state-icon">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                </div>
+                <h3 id="emptyTitle">Aucune tâche pour le moment</h3>
+                <p id="emptyMessage">Commencez par ajouter votre première tâche ci-dessus.</p>
+            </div>
+        </main>
+
+    </div>
+
+    <!-- Modale d'aperçu des images -->
+    <div class="modal-overlay" id="imageModal" role="dialog" aria-modal="true" aria-label="Aperçu de l'image">
+        <button class="modal-close" id="modalClose" aria-label="Fermer">&#215;</button>
+        <div class="modal-content">
+            <img class="modal-image" id="modalImage" alt="Aperçu de la tâche">
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification" role="alert" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

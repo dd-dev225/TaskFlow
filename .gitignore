@@ -1,0 +1,6 @@
+.vscode/
+*.log
+tmp/
+.gemini/
+.agents/
+node_modules/
