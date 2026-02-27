@@ -22,7 +22,7 @@ const State = {
     wasJustCompleted: false
 };
 
-// Références DOM (inchangé)
+// Références DOM (mises en cache pour la performance)
 const DOM = {
     taskForm:       document.getElementById('taskForm'),
     taskInput:      document.getElementById('taskInput'),
@@ -52,6 +52,16 @@ const DOM = {
 // UTILITAIRES & COMPRESSION
 // ==========================================================================
 
+// Échappement HTML pour prévenir les failles XSS
+const escapeHtml = (unsafe) => {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+};
+
 // Compression d'image (Pour éviter de saturer le LocalStorage)
 const resizeAndCompressImage = (file, maxSize = 800) => {
     return new Promise((resolve, reject) => {
@@ -64,6 +74,7 @@ const resizeAndCompressImage = (file, maxSize = 800) => {
                 const canvas = document.createElement('canvas');
                 let { width, height } = img;
 
+                // Redimensionnement proportionnel
                 if (width > height && width > maxSize) {
                     height *= maxSize / width;
                     width = maxSize;
@@ -76,21 +87,13 @@ const resizeAndCompressImage = (file, maxSize = 800) => {
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
+
+                // Conversion en JPEG compressé (qualité 70%)
                 resolve(canvas.toDataURL('image/jpeg', 0.7));
             };
         };
         reader.onerror = error => reject(error);
     });
-};
-
-// Échappement HTML
-const escapeHtml = (unsafe) => {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
 };
 
 // Extraction de mots-clés intelligents pour la recherche d'images
@@ -116,6 +119,7 @@ const generateImages = (text) => {
 const showNotification = (message, type = 'success') => {
     if (State.notificationTimeout) clearTimeout(State.notificationTimeout);
     
+    // Icônes dynamiques selon le type
     const icons = {
         success: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`,
         error:   `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`,
@@ -130,7 +134,47 @@ const showNotification = (message, type = 'success') => {
     }, CONFIG.NOTIFICATION_DURATION);
 };
 
-// ... [confetti, loadTasks restants inchangés]
+// Confettis en pur JS (Effet Premium)
+const fireConfetti = () => {
+    const colors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#3b82f6'];
+    for (let i = 0; i < 60; i++) {
+        const confetti = document.createElement('div');
+        confetti.style.position = 'fixed';
+        confetti.style.left = `${Math.random() * 100}vw`;
+        confetti.style.top = `-10px`;
+        confetti.style.width = `${Math.random() * 8 + 6}px`;
+        confetti.style.height = `${Math.random() * 4 + 4}px`;
+        confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        confetti.style.zIndex = '99999';
+        confetti.style.pointerEvents = 'none';
+        confetti.style.transition = `transform ${Math.random() * 2 + 1}s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity ${Math.random() * 2 + 1}s ease`;
+        
+        document.body.appendChild(confetti);
+
+        // Déclencher l'animation
+        requestAnimationFrame(() => {
+            confetti.style.transform = `translate3d(${Math.random() * 300 - 150}px, ${window.innerHeight + 50}px, 0) rotate(${Math.random() * 720}deg)`;
+            confetti.style.opacity = '0';
+        });
+
+        // Nettoyage
+        setTimeout(() => confetti.remove(), 3000);
+    }
+};
+
+// ==========================================================================
+// GESTION DES DONNÉES (LocalStorage)
+// ==========================================================================
+const loadTasks = () => {
+    try {
+        const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
+        State.tasks = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        console.error("Erreur lors du chargement des tâches", e);
+        State.tasks = [];
+    }
+};
 
 const saveTasks = () => {
     try {
@@ -139,12 +183,114 @@ const saveTasks = () => {
         if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
             showNotification("Mémoire pleine ! Supprimez d'anciennes tâches/photos.", 'error');
         } else {
-            showNotification('Erreur de sauvegarde.', 'error');
+            showNotification('Erreur lors de la sauvegarde.', 'error');
         }
     }
 };
 
-// ... [startClock, updateStats, toggleEmptyState, getDueBadge, getFilteredTasks inchangés]
+// ==========================================================================
+// LOGIQUE MÉTIER & AFFICHAGE
+// ==========================================================================
+
+// Horloge intelligente
+const startClock = () => {
+    const formatter = new Intl.DateTimeFormat('fr-FR', {
+        weekday: 'short', day: 'numeric', month: 'short',
+        hour: '2-digit', minute: '2-digit'
+    });
+    
+    const tick = () => {
+        DOM.liveClock.textContent = formatter.format(new Date()).replace(',', ' -');
+    };
+    
+    tick();
+    setInterval(tick, 30000); // Mise à jour toutes les 30s (pas besoin de la seconde)
+};
+
+// Mise à jour des statistiques et de la barre de progression
+const updateStats = () => {
+    const total = State.tasks.length;
+    const completed = State.tasks.filter(t => t.completed).length;
+    const active = total - completed;
+    const urgent = State.tasks.filter(t => t.priority === 'urgent' && !t.completed).length;
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    // Mise à jour du DOM
+    DOM.totalTasks.textContent = total;
+    DOM.activeTasks.textContent = active;
+    DOM.completedTasks.textContent = completed;
+    DOM.urgentTasks.textContent = urgent;
+
+    DOM.progressBar.style.width = `${pct}%`;
+    DOM.progressLabel.textContent = `${pct} % accompli`;
+    DOM.progressWrapper.setAttribute('aria-valuenow', pct);
+
+    // Effet "Waouh" : 100% accompli
+    if (pct === 100 && total > 0) {
+        DOM.progressLabel.textContent = `🎉 100 % accompli !`;
+        DOM.progressBar.style.boxShadow = "0 0 15px rgba(16, 185, 129, 0.8)";
+        DOM.progressBar.style.background = "var(--color-success)";
+        if (!State.wasJustCompleted) {
+            fireConfetti();
+            showNotification("Félicitations ! Toutes vos tâches sont terminées.", "success");
+            State.wasJustCompleted = true;
+        }
+    } else {
+        DOM.progressBar.style.boxShadow = "";
+        DOM.progressBar.style.background = "";
+        State.wasJustCompleted = false;
+    }
+};
+
+// Gestion de l'état vide (Empty State)
+const toggleEmptyState = () => {
+    const filtered = getFilteredTasks();
+    const show = filtered.length === 0;
+
+    const messages = {
+        all:       { title: 'Aucune tâche pour le moment', msg: 'Commencez par ajouter votre première tâche ci-dessus.' },
+        active:    { title: 'Toutes les tâches sont terminées !', msg: 'Bien joué, vous êtes à jour. Prenez un café ☕' },
+        completed: { title: 'Aucune tâche terminée', msg: 'Cochez une tâche pour la voir apparaître ici.' },
+        urgent:    { title: 'Aucune urgence', msg: 'Pas de stress en vue, profitez-en !' }
+    };
+
+    DOM.emptyState.style.display = show ? 'block' : 'none';
+    DOM.taskList.style.display = show ? 'none' : 'block';
+
+    if (show) {
+        const msg = messages[State.currentFilter] || messages.all;
+        DOM.emptyTitle.textContent = msg.title;
+        DOM.emptyMessage.textContent = msg.msg;
+    }
+};
+
+// Calcul des badges de date
+const getDueBadge = (dueDate, completed) => {
+    if (!dueDate || completed) return null;
+
+    const today = new Date(); today.setHours(0,0,0,0);
+    const due = new Date(dueDate); due.setHours(0,0,0,0);
+    const diffDays = Math.round((due - today) / 86400000);
+
+    if (diffDays < 0) return { text: 'En retard', cls: 'overdue' };
+    if (diffDays === 0) return { text: "Aujourd'hui", cls: 'today' };
+    if (diffDays === 1) return { text: 'Demain', cls: 'tomorrow' };
+    return { text: `Dans ${diffDays} j`, cls: 'upcoming' };
+};
+
+// Filtrage
+const getFilteredTasks = () => {
+    switch (State.currentFilter) {
+        case 'active':    return State.tasks.filter(t => !t.completed);
+        case 'completed': return State.tasks.filter(t => t.completed);
+        case 'urgent':    return State.tasks.filter(t => t.priority === 'urgent' && !t.completed);
+        default:          return State.tasks;
+    }
+};
+
+// ==========================================================================
+// CRÉATION ET GESTION DES TÂCHES (DOM)
+// ==========================================================================
 
 const createTaskElement = (task) => {
     const li = document.createElement('li');
@@ -190,14 +336,17 @@ const createTaskElement = (task) => {
         </div>
     `;
 
+    // Attachement des événements
     li.querySelector('.task-checkbox').addEventListener('click', () => toggleTask(task.id));
     li.querySelector('.btn-edit').addEventListener('click', () => editTask(task.id));
     li.querySelector('.btn-delete').addEventListener('click', () => deleteTask(task.id));
     
+    // Zoom sur les images
     li.querySelectorAll('.task-image').forEach(img => {
         img.addEventListener('click', () => openModal(img.src));
     });
 
+    // Traitement de la photo uploadée
     const fileInput = li.querySelector(`#upload-${task.id}`);
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
@@ -219,7 +368,36 @@ const createTaskElement = (task) => {
     return li;
 };
 
-// ... [renderTasks, addTask inchangés]
+const renderTasks = () => {
+    DOM.taskList.innerHTML = '';
+    getFilteredTasks().forEach(task => {
+        DOM.taskList.appendChild(createTaskElement(task));
+    });
+    toggleEmptyState();
+    updateStats();
+};
+
+// ==========================================================================
+// ACTIONS (Ajouter, Modifier, Supprimer)
+// ==========================================================================
+
+const addTask = (text, dueDate, priority) => {
+    const newTask = {
+        id: Date.now().toString(),
+        text: text.trim(),
+        priority: priority || 'normale',
+        dueDate: dueDate || null,
+        completed: false,
+        createdAt: new Date().toISOString(),
+        completedAt: null,
+        images: []
+    };
+    
+    State.tasks.unshift(newTask); // Ajoute au début
+    saveTasks();
+    renderTasks();
+    showNotification('Tâche ajoutée avec succès !');
+};
 
 const toggleTask = (id) => {
     const task = State.tasks.find(t => t.id === id);
@@ -240,8 +418,6 @@ const toggleTask = (id) => {
     saveTasks();
     renderTasks();
 };
-
-// ... [le reste du fichier init, etc. reste inchangé]
 
 const editTask = (id) => {
     const task = State.tasks.find(t => t.id === id);
