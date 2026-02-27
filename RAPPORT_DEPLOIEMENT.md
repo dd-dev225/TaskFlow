@@ -14,6 +14,7 @@ Ce document résume l'évolution du projet entre la version initiale et la versi
     - **Barre de progression** pour visualiser l'avancement global.
     - **Système de priorités** avec badges visuels.
     - **Dates d'échéance** avec indicateurs de retard.
+    - **API d'images intelligente** (LoremFlickr) : les images générées sont désormais plus pertinentes par rapport au contenu de la tâche grâce à une extraction de mots-clés optimisée.
 - **Optimisation** :
     - Code JavaScript réécrit pour être plus modulaire et performant.
     - CSS nettoyé avec des variables globales pour la cohérence visuelle.
