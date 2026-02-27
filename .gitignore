@@ -1,7 +1,13 @@
+# Environnement
 .vscode/
 cours/
-*.log
-tmp/
 .gemini/
 .agents/
 node_modules/
+*.log
+tmp/
+
+# Fichiers de déploiement locaux et docs
+deployer-iis.bat
+"Executer en tant qu'administrateur"
+"De l'Idee Simple à l'Application Exceptionnelle _ Une Méthodologie pour le Développement Front-End.md"
