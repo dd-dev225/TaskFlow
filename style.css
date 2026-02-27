@@ -551,6 +551,13 @@ body {
     transform: scale(1.1);
 }
 
+/* Style du bouton d'upload de photo */
+.btn-icon.btn-upload:hover { 
+    background: #e0e7ff; 
+    color: var(--color-primary); 
+    cursor: pointer;
+}
+
 .btn-icon.btn-edit:hover { background: var(--priority-normale-bg); color: var(--priority-normale); }
 .btn-icon.btn-delete:hover { background: var(--priority-urgent-bg); color: var(--priority-urgent); }
 
